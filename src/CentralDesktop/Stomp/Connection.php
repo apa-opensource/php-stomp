@@ -661,30 +661,24 @@ class Connection implements LoggerAwareInterface {
             return false;
         }
 
-        $rb  = $this->_tcp_buffer_size;
-        $end = false;
+        $rb = $this->_tcp_buffer_size;
+
+        $read = "";
 
         do {
-            // Only read from the socket if we don't have a complete message in the buffer.
-            if (!$this->_bufferContainsMessage()) {
-                $read = fread($this->_socket, $rb);
+            if($read === "" && feof($this->_socket)) {
+                $this->_reconnect();
 
-                if ($read === false || ($read === "" && feof($this->_socket))) {
-                    $this->_reconnect();
-
-                    return $this->readFrame();
-                }
-                $this->_appendToBuffer($read);
+                return $this->readFrame();
             }
 
-            // If we have a complete message, pull the first whole message out.
-            // Leave remaining partial or whole messages in the buffer.
-            if ($this->_bufferContainsMessage()) {
-                $end  = true;
-                $data = $this->_extractNextMessage();
-            }
-            $len = strlen($data);
-        } while ($len < 2 || $end == false);
+            $this->_appendToBuffer(fgets($this->_socket, $rb));
+
+            if($this->_bufferContainsMessage())
+                break;
+        } while(1);
+
+        $data = $this->_extractNextMessage();
 
         $this->logger->debug("Read frame", array('frame' => $data));
 
