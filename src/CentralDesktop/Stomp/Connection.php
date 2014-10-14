@@ -76,6 +76,8 @@ class Connection implements LoggerAwareInterface {
     protected $_read_timeout_seconds = 60;
     protected $_read_timeout_milliseconds = 0;
     protected $_connect_timeout_seconds = 0.25;
+    protected $_max_reconnect_count = 2;
+    protected $_reconnect_count = 0;
     protected $_tcp_buffer_size = 1024;
 
     private $message_count = 0;
@@ -626,6 +628,7 @@ class Connection implements LoggerAwareInterface {
             $this->_reconnect();
             $this->_writeFrame($stompFrame);
         }
+        $this->_resetReconnectCount();
     }
 
     /**
@@ -674,9 +677,8 @@ class Connection implements LoggerAwareInterface {
 
             $this->_appendToBuffer(fgets($this->_socket, $rb));
 
-            if($this->_bufferContainsMessage())
-                break;
-        } while(1);
+        } while(!$this->_bufferContainsMessage());
+        $this->_resetReconnectCount();
 
         $data = $this->_extractNextMessage();
 
@@ -796,11 +798,25 @@ class Connection implements LoggerAwareInterface {
     }
 
     /**
+     * Resets the reconnection count to 0 if we have successful
+     * completed our action after an reconnect.
+     */
+    protected
+    function _resetReconnectCount() {
+        $this->_reconnect_count = 0;
+    }
+
+    /**
      * Reconnects and renews subscriptions (if there were any)
      * Call this method when you detect connection problems
      */
     protected
     function _reconnect() {
+        if ($this->_max_reconnect_count >= $this->_reconnect_count) {
+            throw new Exception("Maximum reconnect count is reached");
+        }
+
+        $this->_reconnect_count++;
         $subscriptions = $this->_subscriptions;
 
         $this->connect($this->_username, $this->_password);
